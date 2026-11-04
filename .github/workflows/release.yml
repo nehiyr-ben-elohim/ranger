@@ -1,0 +1,64 @@
+name: Release
+
+# Push a tag like v0.1.0 to build the binaries into a draft GitHub release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin --bundles app,dmg
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin --bundles app,dmg
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            args: --bundles deb,appimage
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.target }}
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Ranger ${{ github.ref_name }}
+          releaseBody: |
+            macOS : Apple Silicon (aarch64) ou Intel (x64), fichier .dmg. L'app n'est pas signée : au premier lancement, clic droit sur Ranger puis Ouvrir.
+            Ubuntu x86_64 : .deb (`sudo apt install ./Ranger_*.deb`) ou .AppImage (`chmod +x`, puis lancer).
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

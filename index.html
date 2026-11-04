@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Ranger remet les images, musiques, vidéos, documents, archives et installeurs de ton dossier personnel à leur place, après ta relecture." />
+    <link rel="stylesheet" href="./src/styles.css" />
+    <title>Ranger</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+  <body>
+    <header class="app-bar" data-tauri-drag-region>
+      <span class="wordmark" data-tauri-drag-region>Ranger</span>
+
+      <nav class="steps" aria-label="Étapes" data-tauri-drag-region>
+        <ol>
+          <li data-step="1"><button type="button" id="step-choose" class="step"><span class="step-n">1</span><span class="step-label">Choisir</span></button></li>
+          <li data-step="2"><span class="step"><span class="step-n">2</span><span class="step-label">Vérifier</span></span></li>
+          <li data-step="3"><span class="step"><span class="step-n">3</span><span class="step-label">Terminé</span></span></li>
+        </ol>
+      </nav>
+
+      <div class="bar-tools">
+        <label class="search" for="search">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <span class="visually-hidden">Rechercher un fichier</span>
+          <input id="search" type="search" placeholder="Rechercher" autocomplete="off" spellcheck="false" disabled />
+          <kbd class="search-kbd" aria-hidden="true">⌘F</kbd>
+        </label>
+        <button id="settings" type="button" class="icon-btn" aria-label="Réglages de connexion à Claude" title="Connexion à Claude">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </button>
+        <button id="undo" type="button" class="key key--s" aria-label="Annuler le rangement" title="Annuler le dernier rangement" hidden>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 4 2.5 7l3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 7h7a4 4 0 0 1 0 8H8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <span>Annuler le rangement</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="app">
+      <!-- 1. Where to look, which types -->
+      <section id="screen-home" class="screen" aria-labelledby="home-title">
+        <div class="screen-head">
+          <div class="screen-title">
+            <h1 id="home-title">Ranger</h1>
+            <p class="lead">Choisis où chercher et quels fichiers remettre à leur place. Rien ne bouge avant ta relecture.</p>
+          </div>
+          <div class="head-actions head-actions--stack">
+            <button id="scan" type="button" class="key key--primary">Analyser</button>
+            <p id="home-hint" class="hint" aria-live="polite"></p>
+          </div>
+        </div>
+
+        <div class="home-grid">
+          <section class="panel" aria-labelledby="where-title">
+            <div class="panel-head">
+              <h2 id="where-title">Où chercher</h2>
+              <div class="panel-actions">
+                <button id="add-folders" type="button" class="key key--s">Ajouter des dossiers</button>
+                <button id="add-files" type="button" class="key key--s">Ajouter des fichiers</button>
+              </div>
+            </div>
+            <div id="source-list" class="rows"></div>
+            <button id="reset-sources" type="button" class="link">Revenir à tout mon dossier</button>
+
+            <label class="option">
+              <input type="checkbox" id="include-sorted" />
+              <span class="option-text">
+                <span class="option-title">Réorganiser aussi ce qui est déjà rangé</span>
+                <span class="option-note">Inclut Images, Musique, Films et Documents, archives comprises, pour que l’IA propose de meilleurs sous-dossiers. Les bibliothèques Photos, Musique et TV ne sont jamais touchées.</span>
+                <span id="ai-memory" class="option-memory" hidden>
+                  <span id="ai-memory-text"></span>
+                  <button id="ai-forget" type="button" class="link">Oublier et tout réanalyser</button>
+                </span>
+              </span>
+            </label>
+          </section>
+
+          <section class="panel" aria-labelledby="types-title">
+            <div class="panel-head">
+              <h2 id="types-title">Types de fichiers</h2>
+            </div>
+            <div id="types" class="rows"></div>
+            <div id="custom" class="custom" hidden></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- 2. Scanning: the table's shape, before its rows -->
+      <section id="screen-scanning" class="screen" aria-labelledby="scan-title" aria-busy="true" hidden>
+        <div class="screen-head">
+          <div class="screen-title">
+            <h1 id="scan-title">Analyse en cours…</h1>
+            <p class="lead">Les dossiers système, les outils de dev et les projets de code sont laissés de côté.</p>
+          </div>
+        </div>
+        <div class="skeleton" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span><span></span>
+        </div>
+      </section>
+
+      <!-- 3. Results: the ledger of moves -->
+      <section id="screen-results" class="screen" aria-labelledby="summary-title" hidden>
+        <div class="screen-head">
+          <div class="screen-title">
+            <button id="back" type="button" class="link link--back">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span>Types de fichiers</span>
+            </button>
+            <h1 id="summary-title"></h1>
+            <p id="summary-sub" class="lead"></p>
+          </div>
+          <div class="head-actions">
+            <button id="ai-settings" type="button" class="link">Se connecter à Claude</button>
+            <button id="ai-run" type="button" class="key">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 9.4 6.6 14.5 8 9.4 9.4 8 14.5 6.6 9.4 1.5 8 6.6 6.6z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+              <span>Organiser avec l’IA</span>
+            </button>
+          </div>
+        </div>
+        <div class="status-row">
+          <span id="status" class="status" aria-live="polite"></span>
+          <span id="ai-status" class="status" aria-live="polite"></span>
+          <button id="ai-reset" type="button" class="link" hidden>Retirer les suggestions</button>
+        </div>
+
+        <div class="results-grid">
+          <nav id="cards" class="filters" aria-label="Filtrer par type"></nav>
+
+          <div class="ledger">
+            <div class="ledger-head">
+              <label class="check"><input type="checkbox" id="toggle-all" /> Tout sélectionner</label>
+              <span class="ledger-commit">
+                <span id="selection" class="muted"></span>
+                <button id="apply" type="button" class="key key--primary">Ranger</button>
+              </span>
+            </div>
+            <table class="moves">
+              <thead>
+                <tr>
+                  <th class="c-check"><span class="visually-hidden">Sélection</span></th>
+                  <th>Fichier</th>
+                  <th>Depuis</th>
+                  <th>Vers</th>
+                  <th class="c-size">Taille</th>
+                </tr>
+              </thead>
+              <tbody id="list"></tbody>
+            </table>
+            <p id="list-more" class="muted" hidden></p>
+
+            <details id="skipped" class="skipped">
+              <summary></summary>
+              <ul></ul>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. Done -->
+      <section id="screen-done" class="screen" aria-labelledby="done-title" hidden>
+        <div class="done">
+          <svg class="done-mark" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 20.5l5 5 10-11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <h1 id="done-title"></h1>
+          <p id="done-sub" class="lead"></p>
+          <dl id="done-list" class="done-list" hidden></dl>
+          <div class="done-actions">
+            <button id="done-undo" type="button" class="key">Annuler</button>
+            <button id="done-ok" type="button" class="key key--primary">Terminé</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="sheet" class="sheet-backdrop" hidden>
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+        <h2 id="sheet-title">Connexion à Claude</h2>
+        <p class="sheet-note">
+          L’IA propose des sous-dossiers par sujet. Pour chaque fichier, l’API Claude d’Anthropic reçoit son nom,
+          son dossier, sa taille, sa date et, pour les .txt, .md et .csv, les premières lignes. Le contenu des
+          images, vidéos, musiques et PDF n’est jamais envoyé.
+        </p>
+
+        <div id="auth-sso" class="auth-block">
+          <button id="sso-login" type="button" class="key key--primary key--wide">Se connecter avec mon compte Anthropic</button>
+          <p class="sheet-note">La connexion se fait dans ton navigateur, sans clé à copier.</p>
+          <p id="ant-missing" class="callout" hidden>
+            Il faut d’abord installer l’outil de connexion d’Anthropic. Dans le Terminal :
+            <code id="ant-install">brew install anthropics/tap/ant</code>
+          </p>
+        </div>
+
+        <div id="auth-connected" class="auth-block auth-ok" hidden>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Connecté avec ton compte Anthropic.</span>
+          <button id="sso-logout" type="button" class="link">Se déconnecter</button>
+        </div>
+
+        <details class="key-details">
+          <summary>Utiliser une clé API à la place</summary>
+          <label class="field-label" for="key-input">Clé API</label>
+          <input id="key-input" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" />
+          <div class="key-row">
+            <span id="key-state" class="muted"></span>
+            <button id="key-clear" type="button" class="link" hidden>Supprimer la clé</button>
+            <button id="key-save" type="button" class="key key--s">Enregistrer la clé</button>
+          </div>
+          <p id="keychain-note" class="sheet-note">Elle est gardée dans le Trousseau de ton Mac.</p>
+        </details>
+
+        <p id="key-msg" class="sheet-msg" aria-live="polite"></p>
+        <div class="sheet-actions">
+          <button id="key-cancel" type="button" class="key">Fermer</button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
